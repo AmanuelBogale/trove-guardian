@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trove Guardian</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--card:#f4f4f2;--ok:#1a7f4b;--warn:#b7791f;--bad:#c53030}
+@media(prefers-color-scheme:dark){:root{--bg:#161616;--fg:#eee;--mut:#999;--card:#222}}
+body{font:16px system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:560px;margin:2rem auto;padding:0 1rem}
+input,button{font:inherit;padding:.6rem;border-radius:8px;border:1px solid var(--mut);background:var(--card);color:var(--fg)}
+input{width:100%;box-sizing:border-box;margin:.5rem 0}button{cursor:pointer}
+.card{background:var(--card);border-radius:12px;padding:1rem;margin-top:1rem}
+.row{display:flex;justify-content:space-between;padding:.25rem 0}.mut{color:var(--mut)}
+.bar{height:12px;border-radius:6px;background:var(--bad);overflow:hidden}.bar i{display:block;height:100%;background:var(--ok)}
+</style></head><body>
+<h1>Trove Guardian</h1>
+<p class="mut">Check how far BTC can fall before your Mezo MUSD loan is liquidated.</p>
+<input id="addr" placeholder="Trove owner address 0x..."><button id="go">Check</button>
+<div id="out"></div>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script>
+const CFG={rpc:location.protocol.startsWith("http")?location.origin+"/rpc":"https://rpc.test.mezo.org",tm:"0xE47c80e8c23f6B4A1aE41c34837a0599D5D16bb0",pf:"0x86bCF0841622a5dAC14A313a15f96A95421b9366",app:"https://testnet.mezo.org"};
+const MCR=1.10,TARGET=1.5,f=x=>Number(x)/1e18,fmt=(x,d=2)=>x.toLocaleString("en-US",{maximumFractionDigits:d});
+const p=new ethers.JsonRpcProvider(CFG.rpc);
+const tm=new ethers.Contract(CFG.tm,["function getTroveStatus(address) view returns (uint256)","function getTroveColl(address) view returns (uint256)","function getTroveDebt(address) view returns (uint256)"],p);
+const pf=new ethers.Contract(CFG.pf,["function fetchPrice() view returns (uint256)"],p);
+const out=document.getElementById("out");
+document.getElementById("go").onclick=async()=>{
+  const a=document.getElementById("addr").value.trim();
+  if(!ethers.isAddress(a)){out.innerHTML='<div class="card">Enter a valid address.</div>';return}
+  out.innerHTML='<div class="card mut">Loading...</div>';
+  try{
+    if(await tm.getTroveStatus(a)!==1n){out.innerHTML='<div class="card">No active Trove for this address.</div>';return}
+    const [c,d,pr]=await Promise.all([tm.getTroveColl(a),tm.getTroveDebt(a),pf.fetchPrice.staticCall()]);
+    const coll=f(c),debt=f(d),price=f(pr),liq=debt*MCR/coll,buf=(1-liq/price)*100;
+    const col=buf<=8?"var(--bad)":buf<=20?"var(--warn)":"var(--ok)";
+    const addC=Math.max(0,debt*TARGET/price-coll),rep=Math.max(0,debt-coll*price/TARGET);
+    out.innerHTML=`<div class="card">
+      <div class="row"><span class="mut">Collateral</span><b>${fmt(coll,4)} BTC</b></div>
+      <div class="row"><span class="mut">Debt</span><b>${fmt(debt)} MUSD</b></div>
+      <div class="row"><span class="mut">BTC price</span><b>$${fmt(price)}</b></div>
+      <div class="row"><span class="mut">Collateral ratio</span><b>${fmt(coll*price/debt*100,1)}%</b></div>
+      <div class="row"><span class="mut">Liquidation price</span><b>$${fmt(liq)}</b></div>
+      <div class="row"><span class="mut">Buffer</span><b style="color:${col}">${buf.toFixed(1)}%</b></div>
+      <div class="bar"><i style="width:${Math.max(0,Math.min(100,buf*2))}%"></i></div></div>
+      <div class="card"><b>What if BTC drops?</b>
+      <input id="sl" type="range" min="0" max="90" value="20" style="width:100%">
+      <div id="sim"></div></div>
+      <div class="card"><b>To reach a 150% ratio</b><p>Add ${fmt(addC,4)} BTC, or repay ${fmt(rep)} MUSD.</p>
+      <a href="${CFG.app}" target="_blank" rel="noopener">Open the Mezo app</a></div>`;
+    const sl=document.getElementById("sl"),sim=document.getElementById("sim");
+    const upd=()=>{const r=coll*price*(1-sl.value/100)/debt*100;sim.innerHTML=`BTC -${sl.value}% = $${fmt(price*(1-sl.value/100))}: ratio <b>${r.toFixed(1)}%</b> ${r<MCR*100?'<b style="color:var(--bad)">(liquidatable)</b>':"(safe)"}`};
+    sl.oninput=upd;upd();
+  }catch(e){out.innerHTML='<div class="card">Could not read the chain: '+e.message+'</div>'}
+};
+</script></body></html>

@@ -1,0 +1,12 @@
+{
+  "name": "trove-guardian",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Telegram bot + dashboard that warns Mezo MUSD borrowers before liquidation",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/risk.test.js",
+    "verify": "node scripts/verify.js"
+  },
+  "dependencies": { "ethers": "^6.13.4", "grammy": "^1.30.0" }
+}
