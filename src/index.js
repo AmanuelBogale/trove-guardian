@@ -1,3 +1,5 @@
+import { startWeb } from "./web.js";
+startWeb(Number(process.env.PORT || 3000));
 import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { Bot } from 'grammy';
 import { cfg, getPrice, readTrove, isAddress } from './chain.js';
