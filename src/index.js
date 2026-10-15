@@ -109,4 +109,9 @@ async function tick() {
 }
 const every = Number(process.env.POLL_SECONDS || 60) * 1000;
 setInterval(() => tick().catch((e) => console.error('tick failed', e.message)), every);
-bot.start({ onStart: () => console.log('Trove Guardian running') });
+(async () => {
+  for (;;) {
+    try { await bot.start({ onStart: () => console.log('Trove Guardian running') }); return; }
+    catch (e) { console.error('polling stopped, retrying in 5s:', e.message); await new Promise((r) => setTimeout(r, 5000)); }
+  }
+})();
