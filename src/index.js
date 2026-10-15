@@ -8,10 +8,20 @@ import * as R from './risk.js';
 if (!process.env.BOT_TOKEN) throw new Error('Set BOT_TOKEN in .env (see .env.example)');
 const bot = new Bot(process.env.BOT_TOKEN);
 
-// ---- tiny JSON store ----
+ // ---- store: Upstash Redis if configured (survives restarts), else a local JSON file ----
 const FILE = process.env.DATA_FILE || 'data.json';
-const db = existsSync(FILE) ? JSON.parse(readFileSync(FILE, 'utf8')) : { subs: [] };
-const save = () => { writeFileSync(FILE + '.tmp', JSON.stringify(db, null, 1)); renameSync(FILE + '.tmp', FILE); };
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL, REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const KEY = 'trove-guardian:db';
+async function redis(cmd) {
+  const r = await fetch(REDIS_URL, { method: 'POST', headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify(cmd) });
+  return (await r.json()).result;
+}
+let db = existsSync(FILE) ? JSON.parse(readFileSync(FILE, 'utf8')) : { subs: [] };
+if (REDIS_URL) { const saved = await redis(['GET', KEY]); if (saved) db = JSON.parse(saved); }
+const save = () => {
+  if (REDIS_URL) return redis(['SET', KEY, JSON.stringify(db)]).catch((e) => console.error('save failed', e.message));
+  writeFileSync(FILE + '.tmp', JSON.stringify(db, null, 1)); renameSync(FILE + '.tmp', FILE);
+};
 
 const n = (x, d = 2) => R.toNum(x).toLocaleString('en-US', { maximumFractionDigits: d });
 const TARGET_ICR = R.fromNum(1.5); // "safe" ratio suggested by /fix
