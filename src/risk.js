@@ -27,3 +27,14 @@ export function nextLevel(prev, buffer, warn, crit, hyst = 2) {
   const threshold = p === 2 ? crit : warn;
   return buffer > threshold + hyst ? LEVELS[raw] : LEVELS[p];
 }
+
+// Use the chain's own ratio (getCurrentICR) so the buffer matches Mezo's liquidation check.
+export const bufferFromIcr = (icrScaled, mcr = MCR) =>
+  icrScaled == null || icrScaled === 0n ? null : (1 - toNum(mcr) / toNum(icrScaled)) * 100;
+export const liqPriceFromIcr = (price, icrScaled, mcr = MCR) =>
+  icrScaled == null || icrScaled === 0n ? null : (price * mcr) / icrScaled;
+// Largest repayment that keeps net debt (debt minus gas compensation) at or above Mezo's minimum.
+export const maxRepay = (debt, gasComp, minNetDebt) => {
+  const net = debt - gasComp;
+  return net > minNetDebt ? net - minNetDebt : 0n;
+};
