@@ -1,35 +1,40 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import * as R from '../src/risk.js';
+// Pure risk math. All on-chain values are BigInt scaled by 1e18.
+export const E18 = 10n ** 18n;
+export const MCR = 11n * 10n ** 17n; // 110% minimum collateral ratio (verify in Mezo docs)
+export const toNum = (x) => Number(x) / 1e18;
+export const fromNum = (n) => BigInt(Math.round(n * 1e9)) * 10n ** 9n;
 
-const v = (x) => R.fromNum(x);
-test('icr and liquidation price', () => {
-  const coll = v(1), debt = v(50000), price = v(100000);
-  assert.equal(R.toNum(R.icr(coll, debt, price)), 2);
-  assert.equal(R.toNum(R.liquidationPrice(coll, debt)), 55000);
-  assert.equal(Math.round(R.bufferPct(price, R.liquidationPrice(coll, debt))), 45);
-});
-test('fix amounts reach target', () => {
-  const coll = v(1), debt = v(80000), price = v(100000), target = v(1.5);
-  assert.equal(R.toNum(R.addCollateralFor(coll, debt, price, target)), 0.2);
-  assert.equal(Math.round(R.toNum(R.repayFor(coll, debt, price, target))), 13333);
-  assert.equal(R.addCollateralFor(v(5), debt, price, target), 0n);
-});
-test('alert levels use hysteresis', () => {
-  assert.equal(R.nextLevel(undefined, 30, 20, 8), 'SAFE');
-  assert.equal(R.nextLevel('SAFE', 15, 20, 8), 'WARNING');
-  assert.equal(R.nextLevel('WARNING', 5, 20, 8), 'CRITICAL');
-  assert.equal(R.nextLevel('WARNING', 21, 20, 8), 'WARNING');
-  assert.equal(R.nextLevel('WARNING', 23, 20, 8), 'SAFE');
-  assert.equal(R.nextLevel('CRITICAL', 9, 20, 8), 'CRITICAL');
-  assert.equal(R.nextLevel('CRITICAL', 12, 20, 8), 'WARNING');
-});
+export const icr = (coll, debt, price) => (debt === 0n ? null : (coll * price) / debt);
+export const liquidationPrice = (coll, debt, mcr = MCR) => (coll === 0n ? null : (debt * mcr) / coll);
+// % the BTC price can fall before liquidation
+export const bufferPct = (price, liqPrice) =>
+  liqPrice === null || price === 0n ? null : (1 - toNum(liqPrice) / toNum(price)) * 100;
+export const addCollateralFor = (coll, debt, price, target) => {
+  const need = (debt * target) / price;
+  return need > coll ? need - coll : 0n;
+};
+export const repayFor = (coll, debt, price, target) => {
+  const maxDebt = (coll * price) / target;
+  return debt > maxDebt ? debt - maxDebt : 0n;
+};
 
-test('buffer and liquidation price from the on-chain ratio', () => {
-  assert.equal(Math.round(R.bufferFromIcr(v(2.2))), 50);
-  assert.equal(R.toNum(R.liqPriceFromIcr(v(100000), v(2))), 55000);
-});
-test('max repay respects the minimum net debt', () => {
-  assert.equal(R.toNum(R.maxRepay(v(2202), v(200), v(1800))), 202);
-  assert.equal(R.maxRepay(v(1900), v(200), v(1800)), 0n);
-});
+export const LEVELS = ['SAFE', 'WARNING', 'CRITICAL'];
+// Alert level with hysteresis so alerts don't flap around a threshold.
+export function nextLevel(prev, buffer, warn, crit, hyst = 2) {
+  const raw = buffer <= crit ? 2 : buffer <= warn ? 1 : 0;
+  const p = LEVELS.indexOf(prev);
+  if (p < 0 || raw >= p) return LEVELS[raw];
+  const threshold = p === 2 ? crit : warn;
+  return buffer > threshold + hyst ? LEVELS[raw] : LEVELS[p];
+}
+
+// Use the chain's own ratio (getCurrentICR) so the buffer matches Mezo's liquidation check.
+export const bufferFromIcr = (icrScaled, mcr = MCR) =>
+  icrScaled == null || icrScaled === 0n ? null : (1 - toNum(mcr) / toNum(icrScaled)) * 100;
+export const liqPriceFromIcr = (price, icrScaled, mcr = MCR) =>
+  icrScaled == null || icrScaled === 0n ? null : (price * mcr) / icrScaled;
+// Largest repayment that keeps net debt (debt minus gas compensation) at or above Mezo's minimum.
+export const maxRepay = (debt, gasComp, minNetDebt) => {
+  const net = debt - gasComp;
+  return net > minNetDebt ? net - minNetDebt : 0n;
+};
