@@ -24,3 +24,12 @@ test('alert levels use hysteresis', () => {
   assert.equal(R.nextLevel('CRITICAL', 9, 20, 8), 'CRITICAL');
   assert.equal(R.nextLevel('CRITICAL', 12, 20, 8), 'WARNING');
 });
+
+test('buffer and liquidation price from the on-chain ratio', () => {
+  assert.equal(Math.round(R.bufferFromIcr(v(2.2))), 50);
+  assert.equal(R.toNum(R.liqPriceFromIcr(v(100000), v(2))), 55000);
+});
+test('max repay respects the minimum net debt', () => {
+  assert.equal(R.toNum(R.maxRepay(v(2202), v(200), v(1800))), 202);
+  assert.equal(R.maxRepay(v(1900), v(200), v(1800)), 0n);
+});
