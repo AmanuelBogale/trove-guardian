@@ -25,7 +25,6 @@ const save = () => {
 
 const n = (x, d = 2) => R.toNum(x).toLocaleString('en-US', { maximumFractionDigits: d });
 const TARGET_ICR = R.fromNum(1.5); // "safe" ratio suggested by /fix
-const short = (a) => `${a.slice(0, 8)}...${a.slice(-4)}`;
 const STATUS = { 0: 'No Trove was found for this address.', 2: 'This Trove was closed by its owner.', 3: 'This Trove was liquidated.', 4: 'This Trove was closed by redemption.' };
 const statusText = (t) => STATUS[t.status] || 'This Trove is not active.';
 const NETS = ['mainnet', 'testnet'];
@@ -125,8 +124,10 @@ bot.command('riskiest', safe(async (ctx) => {
   const { hint } = args(ctx);
   const net = hint ?? 'mainnet';
   const r = await lowestTroves(net, 5);
-  const lines = r.troves.map((x, i) => `${i + 1}. ${short(x.address)}  ratio ${(R.toNum(x.icr) * 100).toFixed(0)}%  debt ${n(x.debt, 0)} MUSD`);
-  ctx.reply(`${NETWORKS[net].label}: the ${lines.length} lowest-ratio Troves (of ${r.size}). Mezo redeems from the lowest ratio first.\n\n${lines.join('\n') || 'No Troves found.'}\n\nBTC price: $${n(r.price)}`);
+  const lines = r.troves.map((x, i) => `${i + 1}. <code>${x.address}</code>\n    ratio ${(R.toNum(x.icr) * 100).toFixed(0)}%, debt ${n(x.debt, 0)} MUSD`);
+  ctx.reply(
+    `${NETWORKS[net].label}: the ${lines.length} lowest-ratio Troves (of ${r.size}). Mezo redeems from the lowest ratio first.\n\n${lines.join('\n') || 'No Troves found.'}\n\nBTC price: $${n(r.price)}\nTap an address to copy it, then send /status followed by the address.`,
+    { parse_mode: 'HTML' });
 }));
 bot.catch((e) => console.error('bot error', e.message));
 
