@@ -10,68 +10,84 @@
 @media(prefers-color-scheme:dark){:root{--bg:#161616;--fg:#eee;--mut:#999;--card:#222;--link:#7db7ff}}
 body{font:16px system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:560px;margin:2rem auto;padding:0 1rem}
 input,button{font:inherit;padding:.6rem;border-radius:8px;border:1px solid var(--mut);background:var(--card);color:var(--fg)}
-input{width:100%;box-sizing:border-box;margin:.5rem 0}button{cursor:pointer}.ghost{background:none}
+select{font:inherit;padding:.3rem;border-radius:8px;border:1px solid var(--mut);background:var(--card);color:var(--fg);float:right}input{width:100%;box-sizing:border-box;margin:.5rem 0}button{cursor:pointer}.ghost{background:none}
 a{color:var(--link)}:focus-visible{outline:3px solid var(--link);outline-offset:2px}.links{line-height:1.8}.tag{font-size:.5em;vertical-align:middle;background:var(--card);padding:.2rem .5rem;border-radius:999px;color:var(--mut)}
 .card{background:var(--card);border-radius:12px;padding:1rem;margin-top:1rem}
 .row{display:flex;justify-content:space-between;padding:.25rem 0}.mut{color:var(--mut)}.small{font-size:.85rem}
 .bar{height:12px;border-radius:6px;background:var(--bad);overflow:hidden}.bar i{display:block;height:100%;background:var(--ok)}
 .act{display:flex;gap:.5rem;align-items:center}.act input{margin:.25rem 0}.msg{margin-top:.75rem;word-break:break-word}
 </style></head><body>
-<h1>Trove Guardian <span class="tag">Mezo testnet</span></h1>
+<h1>Trove Guardian <span class="tag">Mezo</span></h1>
 <p class="mut">See how far BTC can fall before your Mezo MUSD loan is liquidated, then get alerts on Telegram.</p>
 <p class="links"><a href="https://t.me/TroveGuardianAman_bot" target="_blank" rel="noopener">Open the Telegram bot</a> ·
 <a href="https://github.com/AmanuelBogale/trove-guardian" target="_blank" rel="noopener">Code</a> ·
 <a href="https://github.com/AmanuelBogale/trove-guardian/blob/main/Trove%20Guardian%20pitch%20deck.pdf" target="_blank" rel="noopener">Deck (PDF)</a> ·
 <a href="https://youtu.be/jb3sczsmqQk" target="_blank" rel="noopener">Demo video</a></p>
-<label for="addr" class="mut small">Trove owner address</label>
+<label for="addr" class="mut small">Trove owner address</label> <select id="net" aria-label="Network"><option value="testnet">Mezo testnet</option><option value="mainnet">Mezo mainnet (read-only)</option></select>
 <input id="addr" placeholder="0x..." autocomplete="off" spellcheck="false">
-<button id="go" type="button">Check</button> <button id="sample" class="ghost" type="button">Try a sample loan</button>
+<button id="go" type="button">Check</button> <button id="sample" class="ghost" type="button">Try a testnet loan</button> <button id="msample" class="ghost" type="button">Try a mainnet loan</button>
 <div id="out" aria-live="polite"></div>
 <p class="mut small">Planned premium tier: more watched wallets, email and phone-call alerts, and custom alert schedules. Not available yet.</p>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
 <script>
-const CFG={rpc:location.protocol.startsWith("http")?location.origin+"/rpc":"https://rpc.test.mezo.org",tm:"0xE47c80e8c23f6B4A1aE41c34837a0599D5D16bb0",pf:"0x86bCF0841622a5dAC14A313a15f96A95421b9366",bo:"0xCdF7028ceAB81fA0C6971208e83fa7872994beE5",st:"0x722E4D24FD6Ff8b0AC679450F3D91294607268fA",musd:"0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503",app:"https://testnet.mezo.org",explorer:"https://explorer.test.mezo.org"};
-const SAMPLE="0x0e202c65EA6dD376788A15a27fCbA0762ca0265a",MCR=1.10,TARGET=1.5,RESERVE=ethers.parseUnits("0.0003",18);
+const NET={
+ testnet:{id:31611,tm:"0xE47c80e8c23f6B4A1aE41c34837a0599D5D16bb0",pf:"0x86bCF0841622a5dAC14A313a15f96A95421b9366",st:"0x722E4D24FD6Ff8b0AC679450F3D91294607268fA",explorer:"https://explorer.test.mezo.org",app:"https://testnet.mezo.org"},
+ mainnet:{id:31612,tm:"0x94AfB503dBca74aC3E4929BACEeDfCe19B93c193",pf:"0xc5aC5A8892230E0A3e1c473881A2de7353fFcA88",st:"0x8C5DB4C62BF29c1C4564390d10c20a47E0b2749f",explorer:"https://explorer.mezo.org",app:"https://mezo.org/borrow"}};
+const BO="0xCdF7028ceAB81fA0C6971208e83fa7872994beE5",MUSD="0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503";
+const SAMPLE={testnet:"0x0e202c65EA6dD376788A15a27fCbA0762ca0265a",mainnet:"0x593c427d8C7bf5C555Ed41cd7CB7cCe8C9F15bB5"};
+const MCR=1.10,TARGET=1.5,RESERVE=ethers.parseUnits("0.0003",18);
 const f=x=>Number(x)/1e18,fmt=(x,d=2)=>x.toLocaleString("en-US",{maximumFractionDigits:d});
-const p=new ethers.JsonRpcProvider(CFG.rpc);
+const provs={},prov=n=>provs[n]??=new ethers.JsonRpcProvider(location.origin+"/rpc/"+n,NET[n].id,{staticNetwork:true});
+const TM_ABI=["function getTroveStatus(address) view returns (uint256)","function getTroveColl(address) view returns (uint256)","function getTroveDebt(address) view returns (uint256)","function MUSD_GAS_COMPENSATION() view returns (uint256)"];
 const BO_ABI=["function addColl(address _upperHint,address _lowerHint) payable","function repayMUSD(uint256 _amount,address _upperHint,address _lowerHint)","function minNetDebt() view returns (uint256)"];
-const tm=new ethers.Contract(CFG.tm,["function getTroveStatus(address) view returns (uint256)","function getTroveColl(address) view returns (uint256)","function getTroveDebt(address) view returns (uint256)","function MUSD_GAS_COMPENSATION() view returns (uint256)"],p);
-const pf=new ethers.Contract(CFG.pf,["function fetchPrice() view returns (uint256)"],p);
-const stRead=new ethers.Contract(CFG.st,["function findInsertPosition(uint256 _NICR,address _prevId,address _nextId) view returns (address,address)"],p);
-const musdRead=new ethers.Contract(CFG.musd,["function balanceOf(address) view returns (uint256)"],p);
-const out=document.getElementById("out"),box=m=>out.innerHTML='<div class="card">'+m+'</div>';
-const STATUS={0:"No Trove was found for this address.",2:"This Trove was closed by its owner.",3:"This Trove was liquidated.",4:"This Trove was closed by redemption."};
+const ST_ABI=["function findInsertPosition(uint256 _NICR,address _prevId,address _nextId) view returns (address,address)","function getLast() view returns (address)","function getPrev(address) view returns (address)","function getSize() view returns (uint256)"];
+const K=(n,k,abi)=>new ethers.Contract(NET[n][k],abi,prov(n));
+const tmT=K("testnet","tm",TM_ABI),stT=K("testnet","st",ST_ABI),musdRead=new ethers.Contract(MUSD,["function balanceOf(address) view returns (uint256)"],prov("testnet"));
+const out=document.getElementById("out"),netSel=document.getElementById("net"),box=m=>out.innerHTML='<div class="card">'+m+'</div>';
+const STATUS={0:"No Trove was found for this address on this network.",2:"This Trove was closed by its owner.",3:"This Trove was liquidated.",4:"This Trove was closed by redemption."};
 let state=null,account=null,signer=null,bp=null,flash="";
 
+async function rankRow(n,a){
+  const el=document.getElementById("rank");if(!el)return;
+  try{
+    const st=K(n,"st",ST_ABI),size=Number(await st.getSize());let x=await st.getLast(),i=1;
+    while(x!==ethers.ZeroAddress&&i<=40){if(x.toLowerCase()===a.toLowerCase()){el.innerHTML=`<b>#${i}</b> of ${size} from the lowest ratio`;return}x=await st.getPrev(x);i++}
+    el.textContent="not among the 40 lowest of "+size;
+  }catch(e){el.textContent="unavailable"}
+}
 async function check(a){
+  const n=netSel.value;
   if(!ethers.isAddress(a)){box("Enter a valid address.");return}
   out.innerHTML='<div class="card mut">Loading...</div>';
   try{
+    const tm=K(n,"tm",TM_ABI),pf=K(n,"pf",["function fetchPrice() view returns (uint256)"]);
     const st=Number(await tm.getTroveStatus(a));
-    if(st!==1){state=null;box(STATUS[st]||"This Trove is not active.");return}
+    if(st!==1){state=null;box((STATUS[st]||"This Trove is not active.")+(n==="mainnet"?" Try the testnet option, or check the address.":""));return}
     let pr;try{pr=await pf.fetchPrice.staticCall()}catch(e){box("Could not read the BTC price from Mezo's oracle right now. Please try again in a minute.");return}
     const [c,d]=await Promise.all([tm.getTroveColl(a),tm.getTroveDebt(a)]);
-    state={addr:a,coll:c,debt:d,price:pr};
+    state={addr:a,coll:c,debt:d,price:pr,net:n};
     const coll=f(c),debt=f(d),price=f(pr),liq=debt*MCR/coll,buf=(1-liq/price)*100;
     const col=buf<=8?"var(--bad)":buf<=20?"var(--warn)":"var(--ok)";
     const addC=Math.max(0,debt*TARGET/price-coll),rep=Math.max(0,debt-coll*price/TARGET);
     out.innerHTML=`<div class="card">
+      <div class="row"><span class="mut">Network</span><b>Mezo ${n}</b></div>
       <div class="row"><span class="mut">Collateral</span><b>${fmt(coll,4)} BTC</b></div>
       <div class="row"><span class="mut">Debt</span><b>${fmt(debt)} MUSD</b></div>
       <div class="row"><span class="mut">BTC price</span><b>$${fmt(price)}</b></div>
       <div class="row"><span class="mut">Collateral ratio</span><b>${fmt(coll*price/debt*100,1)}%</b></div>
       <div class="row"><span class="mut">Liquidation price</span><b>$${fmt(liq)}</b></div>
       <div class="row"><span class="mut">Buffer</span><b style="color:${col}">${buf.toFixed(1)}%</b></div>
+      <div class="row"><span class="mut">Redemption queue</span><span id="rank" class="mut">checking...</span></div>
       <div class="bar"><i style="width:${Math.max(0,Math.min(100,buf*2))}%"></i></div></div>
       <div class="card"><b>What if BTC drops?</b>
-      <input id="sl" type="range" min="0" max="90" value="20" style="width:100%">
+      <input id="sl" type="range" min="0" max="90" value="20" style="width:100%" aria-label="BTC price drop">
       <div id="sim"></div></div>
       <div class="card"><b>To reach a 150% ratio</b><p>Add ${fmt(addC,4)} BTC, or repay ${fmt(rep)} MUSD.</p>
       <p class="mut small">Repayments must leave your debt above Mezo's minimum.</p></div>
       <div id="rescue"></div>`;
     const sl=document.getElementById("sl"),sim=document.getElementById("sim");
     const upd=()=>{const r=coll*price*(1-sl.value/100)/debt*100;sim.innerHTML=`BTC -${sl.value}% = $${fmt(price*(1-sl.value/100))}: ratio <b>${r.toFixed(1)}%</b> ${r<MCR*100?'<b style="color:var(--bad)">(liquidatable)</b>':"(safe)"}`};
-    sl.oninput=upd;upd();renderRescue();
+    sl.oninput=upd;upd();renderRescue();rankRow(n,a);
   }catch(e){box("Could not read the chain: "+e.message)}
 }
 
@@ -79,9 +95,9 @@ async function connect(){
   const el=document.getElementById("rescue");
   if(!window.ethereum){el.innerHTML='<div class="card">No wallet found. Install or open Rabby or MetaMask, then reload.</div>';return}
   try{
-    let prov=new ethers.BrowserProvider(window.ethereum);
-    await prov.send("eth_requestAccounts",[]);
-    try{await prov.send("wallet_switchEthereumChain",[{chainId:"0x7b7b"}])}catch(e){el.innerHTML='<div class="card">Please switch your wallet to Mezo Testnet (chain 31611) and try again.</div>';return}
+    let pv=new ethers.BrowserProvider(window.ethereum);
+    await pv.send("eth_requestAccounts",[]);
+    try{await pv.send("wallet_switchEthereumChain",[{chainId:"0x7b7b"}])}catch(e){el.innerHTML='<div class="card">Please switch your wallet to Mezo Testnet (chain 31611) and try again.</div>';return}
     bp=new ethers.BrowserProvider(window.ethereum);signer=await bp.getSigner();account=await signer.getAddress();
     renderRescue();
   }catch(e){el.innerHTML='<div class="card">Could not connect: '+(e.shortMessage||e.message)+'</div>'}
@@ -91,28 +107,28 @@ if(window.ethereum&&window.ethereum.on)window.ethereum.on("accountsChanged",()=>
 async function renderRescue(){
   const el=document.getElementById("rescue");if(!el)return;
   if(!state){el.innerHTML="";return}
+  if(state.net!=="testnet"){el.innerHTML='<div class="card"><b>Read-only on mainnet</b><p class="mut small">Trove Guardian only reads Mezo mainnet. It never sends a transaction there. The rescue buttons work on testnet, with test coins.</p><a href="'+NET.mainnet.app+'" target="_blank" rel="noopener">Open the Mezo app</a></div>';return}
   const note='<p class="mut small">Testnet only, using test coins. The page never sees your keys: your wallet asks you to confirm each transaction.</p>';
   if(!account){el.innerHTML='<div class="card"><b>Rescue this loan</b><p>Connect the wallet that owns this Trove to add collateral or repay MUSD.</p><button id="cw">Connect wallet</button>'+note+'</div>';document.getElementById("cw").onclick=connect;return}
   if(account.toLowerCase()!==state.addr.toLowerCase()){el.innerHTML='<div class="card"><b>Rescue this loan</b><p>The connected wallet ('+account.slice(0,6)+'...'+account.slice(-4)+') is not this Trove\'s owner. Only the owner can add collateral or repay.</p></div>';return}
-  const [btc,musd]=await Promise.all([p.getBalance(account),musdRead.balanceOf(account)]);
+  const [btc,musd]=await Promise.all([prov("testnet").getBalance(account),musdRead.balanceOf(account)]);
   el.innerHTML=`<div class="card"><b>Rescue this loan</b>
     ${flash?'<p class="msg">'+flash+'</p>':""}
     <p class="mut small">Wallet: ${fmt(f(btc),4)} BTC, ${fmt(f(musd))} MUSD</p>
-    <div class="act"><input id="addAmt" placeholder="BTC to add, e.g. 0.0005"><button id="addBtn">Add collateral</button></div>
-    <div class="act"><input id="repAmt" placeholder="MUSD to repay, e.g. 5"><button id="repBtn">Repay MUSD</button></div>
+    <div class="act"><input id="addAmt" placeholder="BTC to add, e.g. 0.0005" aria-label="BTC to add"><button id="addBtn" type="button">Add collateral</button></div>
+    <div class="act"><input id="repAmt" placeholder="MUSD to repay, e.g. 5" aria-label="MUSD to repay"><button id="repBtn" type="button">Repay MUSD</button></div>
     <div id="rmsg" class="msg mut small">Each action is simulated first. Nothing is sent until you confirm in your wallet.</div>${note}</div>`;
   document.getElementById("addBtn").onclick=()=>rescue("add");
   document.getElementById("repBtn").onclick=()=>rescue("rep");
 }
-
 async function hints(nicr,owner){
-  try{const r=await stRead.findInsertPosition(nicr,owner,owner);return[r[0],r[1]]}
+  try{const r=await stT.findInsertPosition(nicr,owner,owner);return[r[0],r[1]]}
   catch(e){return[ethers.ZeroAddress,ethers.ZeroAddress]}
 }
 async function rescue(kind){
   const msg=document.getElementById("rmsg"),say=t=>{msg.className="msg";msg.innerHTML=t};
   try{
-    const bo=new ethers.Contract(CFG.bo,BO_ABI,signer);
+    const bo=new ethers.Contract(BO,BO_ABI,signer);
     let amt;try{amt=ethers.parseUnits(document.getElementById(kind==="add"?"addAmt":"repAmt").value.trim(),18)}catch(e){return say("Enter a valid number.")}
     if(amt<=0n)return say("Enter an amount above zero.");
     let nicr;
@@ -120,7 +136,7 @@ async function rescue(kind){
       if(amt+RESERVE>await bp.getBalance(account))return say("Not enough test BTC. Keep a little for network fees.");
       nicr=(state.coll+amt)*10n**20n/state.debt;
     }else{
-      const [gas,minNet]=await Promise.all([tm.MUSD_GAS_COMPENSATION(),new ethers.Contract(CFG.bo,BO_ABI,p).minNetDebt()]);
+      const [gas,minNet]=await Promise.all([tmT.MUSD_GAS_COMPENSATION(),new ethers.Contract(BO,BO_ABI,prov("testnet")).minNetDebt()]);
       const max=state.debt-gas-minNet;
       if(max<=0n||amt>max)return say("Mezo requires at least "+fmt(f(minNet))+" MUSD of net debt, so you can repay at most "+fmt(f(max>0n?max:0n))+" MUSD. Add collateral instead.");
       if(amt>await musdRead.balanceOf(account))return say("Your wallet does not hold that much MUSD.");
@@ -132,14 +148,18 @@ async function rescue(kind){
     if(kind==="add")await bo.addColl.staticCall(u,l,{value:amt});else await bo.repayMUSD.staticCall(amt,u,l);
     say("Simulation passed. Confirm the transaction in your wallet...");
     const tx=kind==="add"?await bo.addColl(u,l,{value:amt}):await bo.repayMUSD(amt,u,l);
-    say('Sent. Waiting for confirmation: <a href="'+CFG.explorer+'/tx/'+tx.hash+'" target="_blank" rel="noopener">'+tx.hash.slice(0,12)+'...</a>');
+    say('Sent. Waiting for confirmation: <a href="'+NET.testnet.explorer+'/tx/'+tx.hash+'" target="_blank" rel="noopener">'+tx.hash.slice(0,12)+'...</a>');
     await tx.wait();
-    flash='Confirmed: <a href="'+CFG.explorer+'/tx/'+tx.hash+'" target="_blank" rel="noopener">view transaction</a>';
+    flash='Confirmed: <a href="'+NET.testnet.explorer+'/tx/'+tx.hash+'" target="_blank" rel="noopener">view transaction</a>';
     await check(state.addr);
   }catch(e){say("Could not complete: "+(e.shortMessage||e.reason||e.message))}
 }
-document.getElementById("go").onclick=()=>{flash="";check(document.getElementById("addr").value.trim())};
-document.getElementById("sample").onclick=()=>{flash="";document.getElementById("addr").value=SAMPLE;check(SAMPLE)};
-const q=new URLSearchParams(location.search).get("address");
-if(q){document.getElementById("addr").value=q;check(q)}
+const go=()=>{flash="";check(document.getElementById("addr").value.trim())};
+document.getElementById("go").onclick=go;
+netSel.onchange=()=>{if(document.getElementById("addr").value.trim())go()};
+document.getElementById("sample").onclick=()=>{netSel.value="testnet";document.getElementById("addr").value=SAMPLE.testnet;go()};
+document.getElementById("msample").onclick=()=>{netSel.value="mainnet";document.getElementById("addr").value=SAMPLE.mainnet;go()};
+const qs=new URLSearchParams(location.search),q=qs.get("address");
+if(qs.get("network")==="mainnet")netSel.value="mainnet";
+if(q){document.getElementById("addr").value=q;go()}
 </script></body></html>
