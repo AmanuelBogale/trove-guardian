@@ -39,7 +39,7 @@ async function forward(net, body) {
 
 // Serves the dashboard, forwards allowed read calls to Mezo (/rpc/testnet, /rpc/mainnet), and answers /health.
 export function startWeb(port) {
-  http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     if (req.url === '/health') { res.writeHead(200, HEADERS); res.end('ok'); return; }
     const m = req.method === 'POST' && /^\/rpc(?:\/(testnet|mainnet))?$/.exec(req.url);
     if (m) {
@@ -57,7 +57,12 @@ export function startWeb(port) {
       } catch (e) { res.writeHead(502, HEADERS); res.end('upstream error'); }
       return;
     }
-    res.writeHead(200, { ...HEADERS, 'content-type': 'text/html; charset=utf-8' });
-    res.end(readFileSync(page));
-  }).listen(port, () => console.log(`Dashboard listening on port ${port}`));
+    try {
+      const html = readFileSync(page);
+      res.writeHead(200, { ...HEADERS, 'content-type': 'text/html; charset=utf-8' });
+      res.end(html);
+    } catch (e) { res.writeHead(500, HEADERS); res.end('page unavailable'); }
+  });
+  server.listen(port, () => console.log(`Dashboard listening on port ${port}`));
+  return server;
 }
