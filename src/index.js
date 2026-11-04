@@ -1,7 +1,7 @@
 import { startWeb } from "./web.js";
 startWeb(Number(process.env.PORT || 3000));
 import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
-import { Bot } from 'grammy';
+import { Bot, InlineKeyboard } from 'grammy';
 import { cfg, NETWORKS, getPrice, getLimits, readTrove, locate, lowestTroves, rankOf, isAddress } from './chain.js';
 import * as R from './risk.js';
 
@@ -51,10 +51,48 @@ async function summary(t) {
     `Dashboard: ${cfg.publicUrl}/?address=${t.address}&network=${t.net}` };
 }
 
+// ---- reply builders (shared by commands and buttons) ----
+const simText = async (t, drop) => {
+  const lim = await getLimits(t.net);
+  const p2 = (t.price * BigInt(Math.round((100 - drop) * 100))) / 10000n;
+  const ratio = R.toNum(R.icr(t.coll, t.debt, p2)) * 100;
+  return `${NETWORKS[t.net].label}: if BTC falls ${drop}% to $${n(p2)}:\nCollateral ratio ${ratio.toFixed(1)}% -> ${ratio < R.toNum(lim.mcr) * 100 ? 'LIQUIDATABLE' : 'still safe'}`;
+};
+const fixText = async (t) => {
+  const lim = await getLimits(t.net);
+  const add = R.addCollateralFor(t.coll, t.debt, t.price, TARGET_ICR);
+  const want = R.repayFor(t.coll, t.debt, t.price, TARGET_ICR);
+  const cap = R.maxRepay(t.debt, lim.gasComp, lim.minNetDebt);
+  const repay = want < cap ? want : cap;
+  let msg = `${NETWORKS[t.net].label}. To reach a 150% ratio you can either:\n- add ${n(add, 4)} BTC, or\n- repay ${n(repay)} MUSD`;
+  if (want > cap) msg += `\n\nMezo requires at least ${n(lim.minNetDebt)} MUSD of net debt (debt minus ${n(lim.gasComp)} gas compensation), so repaying alone can't reach 150%. Adding BTC is the better fix.`;
+  if (lim.assumed.length) msg += `\n\n(Used documented values for: ${lim.assumed.join(', ')}. Confirm in the Mezo app.)`;
+  return `${msg}\n\nDo it in the Mezo app: ${NETWORKS[t.net].appUrl}`;
+};
+const rankText = async (t) => {
+  const r = await rankOf(t.address, t.net);
+  return r.rank
+    ? `${NETWORKS[t.net].label}: this Trove is number ${r.rank} of ${r.size} counting from the lowest ratio. Mezo redeems the lowest-ratio Troves first, so a low number means a higher redemption risk.`
+    : `${NETWORKS[t.net].label}: this Trove is not among the 300 lowest-ratio Troves (of ${r.size}), so it is far from the front of the redemption line.`;
+};
+const riskText = async (net) => {
+  const r = await lowestTroves(net, 5);
+  const lines = r.troves.map((x, i) => `${i + 1}. <code>${x.address}</code>\n    ratio ${(R.toNum(x.icr) * 100).toFixed(0)}%, debt ${n(x.debt, 0)} MUSD`);
+  return `${NETWORKS[net].label}: the ${lines.length} lowest-ratio Troves (of ${r.size}). Mezo redeems from the lowest ratio first.\n\n${lines.join('\n') || 'No Troves found.'}\n\nBTC price: $${n(r.price)}\nTap an address to copy it, then send /status followed by the address.`;
+};
+
+// ---- buttons ----
+const nc = (net) => (net === 'mainnet' ? 'm' : 't');
+const kb = (t) => new InlineKeyboard()
+  .text('BTC -20%', `s:20:${nc(t.net)}:${t.address}`).text('BTC -40%', `s:40:${nc(t.net)}:${t.address}`).row()
+  .text('How to fix', `f:0:${nc(t.net)}:${t.address}`).text('Redemption rank', `r:0:${nc(t.net)}:${t.address}`).row()
+  .url('Open dashboard', `${cfg.publicUrl}/?address=${t.address}&network=${t.net}`);
+
 bot.command('start', (ctx) => ctx.reply(
   'Trove Guardian watches your Mezo MUSD loan and warns you before liquidation. It works on Mezo mainnet (read-only) and testnet.\n\n' +
   '/watch <address> [warn%] [critical%] [mainnet|testnet]  (default 20 / 8)\n/unwatch <address>\n/list\n' +
-  '/status <address>\n/simulate <address> <drop%>\n/fix <address>\n/rank <address>  (place in the redemption queue)\n/riskiest [mainnet|testnet]'));
+  '/status <address>\n/simulate <address> <drop%>\n/fix <address>\n/rank <address>  (place in the redemption queue)\n/riskiest [mainnet|testnet]',
+  { reply_markup: new InlineKeyboard().text('Lowest-ratio Troves on mainnet', 'k:0:m').row().url('Open the dashboard', cfg.publicUrl) }));
 
 bot.command('watch', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
@@ -66,9 +104,8 @@ bot.command('watch', safe(async (ctx) => {
   db.subs = db.subs.filter((s) => !(s.chatId === ctx.chat.id && s.address.toLowerCase() === addr.toLowerCase()));
   db.subs.push({ chatId: ctx.chat.id, address: addr, warn, crit, net: t.net });
   save();
-  ctx.reply(`Watching ${addr}\nAlerts at ${warn}% and ${crit}% buffer.\n\n${(await summary(t)).text}`);
+  ctx.reply(`Watching ${addr}\nAlerts at ${warn}% and ${crit}% buffer.\n\n${(await summary(t)).text}`, { reply_markup: kb(t) });
 }));
-
 bot.command('unwatch', (ctx) => {
   const a = ctx.match.trim().toLowerCase();
   db.subs = db.subs.filter((s) => !(s.chatId === ctx.chat.id && s.address.toLowerCase() === a));
@@ -82,53 +119,48 @@ bot.command('status', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
   if (!isAddress(tk[0] ?? '')) return ctx.reply('Usage: /status 0xAddress [mainnet|testnet]');
   const t = await locate(tk[0], hint);
-  ctx.reply(t.active ? (await summary(t)).text : statusText(t));
+  if (!t.active) return ctx.reply(statusText(t));
+  ctx.reply((await summary(t)).text, { reply_markup: kb(t) });
 }));
 bot.command('simulate', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
   const drop = Number(tk[1]);
   if (!isAddress(tk[0] ?? '') || !(drop >= 0 && drop < 100)) return ctx.reply('Usage: /simulate 0xAddress 30 [mainnet|testnet]');
   const t = await locate(tk[0], hint);
-  if (!t.active) return ctx.reply(statusText(t));
-  const lim = await getLimits(t.net);
-  const p2 = (t.price * BigInt(Math.round((100 - drop) * 100))) / 10000n;
-  const ratio = R.toNum(R.icr(t.coll, t.debt, p2)) * 100;
-  ctx.reply(`${NETWORKS[t.net].label}: if BTC falls ${drop}% to $${n(p2)}:\nCollateral ratio ${ratio.toFixed(1)}% -> ${ratio < R.toNum(lim.mcr) * 100 ? 'LIQUIDATABLE' : 'still safe'}`);
+  ctx.reply(t.active ? await simText(t, drop) : statusText(t));
 }));
 bot.command('fix', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
   if (!isAddress(tk[0] ?? '')) return ctx.reply('Usage: /fix 0xAddress [mainnet|testnet]');
   const t = await locate(tk[0], hint);
-  if (!t.active) return ctx.reply(statusText(t));
-  const lim = await getLimits(t.net);
-  const add = R.addCollateralFor(t.coll, t.debt, t.price, TARGET_ICR);
-  const want = R.repayFor(t.coll, t.debt, t.price, TARGET_ICR);
-  const cap = R.maxRepay(t.debt, lim.gasComp, lim.minNetDebt);
-  const repay = want < cap ? want : cap;
-  let msg = `${NETWORKS[t.net].label}. To reach a 150% ratio you can either:\n- add ${n(add, 4)} BTC, or\n- repay ${n(repay)} MUSD`;
-  if (want > cap) msg += `\n\nMezo requires at least ${n(lim.minNetDebt)} MUSD of net debt (debt minus ${n(lim.gasComp)} gas compensation), so repaying alone can't reach 150%. Adding BTC is the better fix.`;
-  if (lim.assumed.length) msg += `\n\n(Used documented values for: ${lim.assumed.join(', ')}. Confirm in the Mezo app.)`;
-  ctx.reply(`${msg}\n\nDo it in the Mezo app: ${NETWORKS[t.net].appUrl}`);
+  ctx.reply(t.active ? await fixText(t) : statusText(t));
 }));
 bot.command('rank', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
   if (!isAddress(tk[0] ?? '')) return ctx.reply('Usage: /rank 0xAddress [mainnet|testnet]');
   const t = await locate(tk[0], hint);
-  if (!t.active) return ctx.reply(statusText(t));
-  const r = await rankOf(t.address, t.net);
-  ctx.reply(r.rank
-    ? `${NETWORKS[t.net].label}: this Trove is number ${r.rank} of ${r.size} counting from the lowest ratio. Mezo redeems the lowest-ratio Troves first, so a low number means a higher redemption risk.`
-    : `${NETWORKS[t.net].label}: this Trove is not among the 300 lowest-ratio Troves (of ${r.size}), so it is far from the front of the redemption line.`);
+  ctx.reply(t.active ? await rankText(t) : statusText(t));
 }));
 bot.command('riskiest', safe(async (ctx) => {
   const { hint } = args(ctx);
-  const net = hint ?? 'mainnet';
-  const r = await lowestTroves(net, 5);
-  const lines = r.troves.map((x, i) => `${i + 1}. <code>${x.address}</code>\n    ratio ${(R.toNum(x.icr) * 100).toFixed(0)}%, debt ${n(x.debt, 0)} MUSD`);
-  ctx.reply(
-    `${NETWORKS[net].label}: the ${lines.length} lowest-ratio Troves (of ${r.size}). Mezo redeems from the lowest ratio first.\n\n${lines.join('\n') || 'No Troves found.'}\n\nBTC price: $${n(r.price)}\nTap an address to copy it, then send /status followed by the address.`,
-    { parse_mode: 'HTML' });
+  ctx.reply(await riskText(hint ?? 'mainnet'), { parse_mode: 'HTML' });
 }));
+
+// Button taps: action:argument:network[:address]  (s = simulate, f = fix, r = rank, k = riskiest)
+bot.callbackQuery(/^([sfrk]):(\d+):([mt])(?::(0x[0-9a-fA-F]{40}))?$/, async (ctx) => {
+  await ctx.answerCallbackQuery().catch(() => {});
+  try {
+    const [, act, arg, c, addr] = ctx.match;
+    const net = c === 'm' ? 'mainnet' : 'testnet';
+    if (act === 'k') return await ctx.reply(await riskText(net), { parse_mode: 'HTML' });
+    const t = await readTrove(addr, undefined, net);
+    if (!t.active) return await ctx.reply(statusText(t));
+    await ctx.reply(act === 's' ? await simText(t, Number(arg)) : act === 'f' ? await fixText(t) : await rankText(t));
+  } catch (e) {
+    console.error('button failed', e.message);
+    await ctx.reply('I could not read Mezo right now. Please try again in a minute.');
+  }
+});
 bot.catch((e) => console.error('bot error', e.message));
 
 // ---- monitor (one pass per network) ----
@@ -169,7 +201,7 @@ async function tickNet(net, subs) {
       const repeat = lvl === 'CRITICAL' && Date.now() - (s.lastAlert ?? 0) > 30 * 60e3;
       if (worse || recovered || repeat) {
         const head = recovered ? 'Back to safe' : lvl === 'CRITICAL' ? 'CRITICAL: liquidation risk' : 'Warning: buffer shrinking';
-        await bot.api.sendMessage(s.chatId, `${head}\n${s.address}\n\n${text}\n\nUse /fix ${s.address}`);
+        await bot.api.sendMessage(s.chatId, `${head}\n${s.address}\n\n${text}`, { reply_markup: kb(t) });
         s.lastAlert = Date.now();
       }
       s.level = lvl; save();
