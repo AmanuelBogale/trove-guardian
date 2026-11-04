@@ -1,4 +1,5 @@
 ![tests](https://github.com/AmanuelBogale/trove-guardian/actions/workflows/ci.yml/badge.svg)
+
 # Trove Guardian
 
 A Telegram bot and web dashboard that warns Mezo MUSD borrowers before their Bitcoin-backed loan is liquidated, shows how close a loan is to the redemption queue, and lets a testnet owner top the loan up in one tap.
@@ -29,7 +30,7 @@ Mezo contracts (TroveManager, PriceFeed, BorrowerOperations, SortedTroves) are r
 2. Create a bot with @BotFather and copy `.env.example` to `.env`, then set `BOT_TOKEN`.
 3. `node --env-file=.env src/index.js`
 4. Optional settings are listed in `.env.example` (Redis, public URL, RPC endpoints).
-5. `npm test` runs the risk-math tests. `npm run verify -- 0xOwner` checks the contract calls against a real Trove.
+5. `npm test` runs the 16 automated tests (risk math and the dashboard server). `npm run verify -- 0xOwner` checks the contract calls against a real Trove.
 
 ## Limits
 - The bot never holds keys or sends transactions. Rescues are signed by the owner in their own wallet, on testnet only.
