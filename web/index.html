@@ -25,7 +25,8 @@ a{color:var(--link)}:focus-visible{outline:3px solid var(--link);outline-offset:
 <a href="https://youtu.be/jb3sczsmqQk" target="_blank" rel="noopener">Demo video</a></p>
 <label for="addr" class="mut small">Trove owner address</label> <select id="net" aria-label="Network"><option value="testnet">Mezo testnet</option><option value="mainnet">Mezo mainnet (read-only)</option></select>
 <input id="addr" placeholder="0x..." autocomplete="off" spellcheck="false">
-<button id="go" type="button">Check</button> <button id="sample" class="ghost" type="button">Try a testnet loan</button> <button id="msample" class="ghost" type="button">Try a mainnet loan</button>
+<button id="go" type="button">Check</button> <button id="sample" class="ghost" type="button">Try a testnet loan</button> <button id="msample" class="ghost" type="button">Try a mainnet loan</button> <button id="mine" type="button">Use my wallet</button>
+<p class="mut small">Use my wallet works with EVM wallets such as Rabby. Bitcoin-wallet sign-in (Mezo Passport) is not supported yet.</p>
 <div id="out" aria-live="polite"></div>
 <p class="mut small">Planned premium tier: more watched wallets, email and phone-call alerts, and custom alert schedules. Not available yet.</p>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
@@ -91,16 +92,20 @@ async function check(a){
   }catch(e){box("Could not read the chain: "+e.message)}
 }
 
+async function ensureWallet(){
+  if(!window.ethereum)throw new Error("No wallet found. Install or open Rabby or MetaMask, then reload.");
+  const pv=new ethers.BrowserProvider(window.ethereum);
+  await pv.send("eth_requestAccounts",[]);
+  if(netSel.value==="testnet"){
+    try{await pv.send("wallet_switchEthereumChain",[{chainId:"0x7b7b"}])}catch(e){throw new Error("Please switch your wallet to Mezo Testnet (chain 31611) and try again.")}
+  }
+  bp=new ethers.BrowserProvider(window.ethereum);signer=await bp.getSigner();account=await signer.getAddress();
+  return account;
+}
 async function connect(){
   const el=document.getElementById("rescue");
-  if(!window.ethereum){el.innerHTML='<div class="card">No wallet found. Install or open Rabby or MetaMask, then reload.</div>';return}
-  try{
-    let pv=new ethers.BrowserProvider(window.ethereum);
-    await pv.send("eth_requestAccounts",[]);
-    try{await pv.send("wallet_switchEthereumChain",[{chainId:"0x7b7b"}])}catch(e){el.innerHTML='<div class="card">Please switch your wallet to Mezo Testnet (chain 31611) and try again.</div>';return}
-    bp=new ethers.BrowserProvider(window.ethereum);signer=await bp.getSigner();account=await signer.getAddress();
-    renderRescue();
-  }catch(e){el.innerHTML='<div class="card">Could not connect: '+(e.shortMessage||e.message)+'</div>'}
+  try{await ensureWallet();renderRescue()}
+  catch(e){el.innerHTML='<div class="card">'+(e.shortMessage||e.message)+'</div>'}
 }
 if(window.ethereum&&window.ethereum.on)window.ethereum.on("accountsChanged",()=>{account=null;signer=null;renderRescue()});
 
@@ -158,6 +163,7 @@ const go=()=>{flash="";check(document.getElementById("addr").value.trim())};
 document.getElementById("go").onclick=go;
 netSel.onchange=()=>{if(document.getElementById("addr").value.trim())go()};
 document.getElementById("sample").onclick=()=>{netSel.value="testnet";document.getElementById("addr").value=SAMPLE.testnet;go()};
+document.getElementById("mine").onclick=async()=>{flash="";try{const a=await ensureWallet();document.getElementById("addr").value=a;check(a)}catch(e){box(e.shortMessage||e.message)}};
 document.getElementById("msample").onclick=()=>{netSel.value="mainnet";document.getElementById("addr").value=SAMPLE.mainnet;go()};
 const qs=new URLSearchParams(location.search),q=qs.get("address");
 if(qs.get("network")==="mainnet")netSel.value="mainnet";
