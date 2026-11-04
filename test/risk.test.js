@@ -33,3 +33,22 @@ test('max repay respects the minimum net debt', () => {
   assert.equal(R.toNum(R.maxRepay(v(2202), v(200), v(1800))), 202);
   assert.equal(R.maxRepay(v(1900), v(200), v(1800)), 0n);
 });
+
+test('zero debt or zero collateral gives no ratio or price', () => {
+  assert.equal(R.icr(v(1), 0n, v(100)), null);
+  assert.equal(R.liquidationPrice(0n, v(100)), null);
+  assert.equal(R.bufferFromIcr(0n), null);
+  assert.equal(R.bufferFromIcr(null), null);
+});
+test('nothing to add or repay when already above the target', () => {
+  assert.equal(R.addCollateralFor(v(20), v(1000), v(100), v(1.5)), 0n);
+  assert.equal(R.repayFor(v(5), v(100), v(100), v(1.5)), 0n);
+});
+test('the ratio at the liquidation price equals the minimum ratio', () => {
+  const coll = v(2), debt = v(100000);
+  assert.equal(R.icr(coll, debt, R.liquidationPrice(coll, debt)), R.MCR);
+});
+test('alert level changes exactly at the threshold', () => {
+  assert.equal(R.nextLevel('SAFE', 20, 20, 8), 'WARNING');
+  assert.equal(R.nextLevel('SAFE', 20.1, 20, 8), 'SAFE');
+});
