@@ -5,8 +5,12 @@
   "description": "Telegram bot + dashboard that warns Mezo MUSD borrowers before liquidation",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test test/risk.test.js",
-    "verify": "node scripts/verify.js"
+    "test": "node --test test/risk.test.js test/server.test.js",
+    "verify": "node scripts/verify.js",
+    "web": "node scripts/serve.js"
   },
-  "dependencies": { "ethers": "^6.13.4", "grammy": "^1.30.0" }
+  "dependencies": {
+    "ethers": "^6.13.4",
+    "grammy": "^1.30.0"
+  }
 }
