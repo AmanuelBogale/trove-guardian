@@ -45,7 +45,7 @@ The minimum collateral ratio, the gas compensation and the minimum net debt are 
 | SortedTroves | `0x722E4D24FD6Ff8b0AC679450F3D91294607268fA` | `0x8C5DB4C62BF29c1C4564390d10c20a47E0b2749f` |
 
 ## Tests
-`npm test` runs 5 automated tests on the risk math (ratio, liquidation price, buffer, repay limits, alert levels).
+`npm test` runs 16 automated tests: 9 on the risk math (ratio, liquidation price, buffer, repay limits, alert levels and edge cases) and 7 on the dashboard server (health check, security headers, the relay refusing anything that is not a read call, and checks that all contract addresses are valid). GitHub runs them on every commit (see the Actions tab and the badge on the README).
 
 ## Not done yet
 - Rescue on mainnet: not built, by design.
