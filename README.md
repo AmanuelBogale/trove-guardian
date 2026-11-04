@@ -1,3 +1,4 @@
+![tests](https://github.com/AmanuelBogale/trove-guardian/actions/workflows/ci.yml/badge.svg)
 # Trove Guardian
 
 A Telegram bot and web dashboard that warns Mezo MUSD borrowers before their Bitcoin-backed loan is liquidated, shows how close a loan is to the redemption queue, and lets a testnet owner top the loan up in one tap.
