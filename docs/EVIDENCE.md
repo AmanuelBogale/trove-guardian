@@ -20,6 +20,7 @@ From the dashboard, the owner connected a wallet (Rabby), the page simulated the
 
 - Rescue transaction (adds 0.0005 BTC through BorrowerOperations): [0x3f0014c0...6858](https://explorer.test.mezo.org/tx/0x3f0014c04333f8790338fcc36fff94993c64b1b79c15e7ddfb50003903b76858)
 - BTC moved slightly between the two readings, so the ratio change is not only from the added collateral.
+- Repay MUSD from the dashboard (5 MUSD, through BorrowerOperations): [0xe6409551...09ad](https://explorer.test.mezo.org/tx/0xe6409551c33bed994ea4542b80c14355b0efac363afa195cfac3463195de09ad). The page simulated the call, then the owner signed it in Rabby.
 
 ## 2. Read-only on Mezo mainnet (tested Nov 4, 2026)
 - `/riskiest` read Mezo's sorted list of Troves on mainnet: **3 open Troves**. The lowest ratio was **115%** (debt about 2,090 MUSD), then 134%, then about 8,891%.
@@ -49,6 +50,5 @@ The minimum collateral ratio, the gas compensation and the minimum net debt are 
 
 ## Not done yet
 - Rescue on mainnet: not built, by design.
-- Repaying MUSD from the dashboard is implemented but not yet exercised with a real transaction.
 - The alerts for a failed price read and for closed or liquidated Troves are implemented but have not been triggered in production.
 - Bitcoin-wallet sign-in (Mezo Passport) is not supported. The rescue needs an EVM wallet such as Rabby.
