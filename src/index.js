@@ -40,15 +40,17 @@ const safe = (fn) => async (ctx) => {
   try { await fn(ctx); } catch (e) { console.error('command failed', e.message); await ctx.reply('I could not read Mezo right now. Please try again in a minute.'); }
 };
 
+const bar = (pct) => { const k = Math.max(0, Math.min(10, Math.round(pct / 10))); return '▰'.repeat(k) + '▱'.repeat(10 - k); };
 async function summary(t) {
   const lim = await getLimits(t.net);
   const liq = R.liqPriceFromIcr(t.price, t.onchainIcr, lim.mcr);
   const buf = R.bufferFromIcr(t.onchainIcr, lim.mcr);
+  const dot = buf <= 8 ? '🔴' : buf <= 20 ? '🟡' : '🟢';
   return { lim, liq, buf, text:
-    `Network: ${NETWORKS[t.net].label}\nCollateral: ${n(t.coll, 4)} BTC\nDebt: ${n(t.debt)} MUSD\nBTC price: $${n(t.price)}\n` +
-    `Collateral ratio: ${(R.toNum(t.onchainIcr) * 100).toFixed(1)}%\n` +
-    `Liquidation price: $${n(liq)}\nBuffer: ${buf.toFixed(1)}% price drop\n` +
-    `Dashboard: ${cfg.publicUrl}/?address=${t.address}&network=${t.net}` };
+    `🛡️ <b>Trove Guardian</b> · ${NETWORKS[t.net].label}\n\n` +
+    `${dot} <b>${buf.toFixed(1)}%</b> room to fall before liquidation\n<code>${bar(buf)}</code>\n\n` +
+    `<b>Collateral</b>  ${n(t.coll, 4)} BTC\n<b>Debt</b>  ${n(t.debt)} MUSD\n<b>BTC price</b>  $${n(t.price)}\n` +
+    `<b>Collateral ratio</b>  ${(R.toNum(t.onchainIcr) * 100).toFixed(1)}%\n<b>Liquidation price</b>  $${n(liq)}` };
 }
 
 // ---- reply builders (shared by commands and buttons) ----
@@ -104,7 +106,7 @@ bot.command('watch', safe(async (ctx) => {
   db.subs = db.subs.filter((s) => !(s.chatId === ctx.chat.id && s.address.toLowerCase() === addr.toLowerCase()));
   db.subs.push({ chatId: ctx.chat.id, address: addr, warn, crit, net: t.net });
   save();
-  ctx.reply(`Watching ${addr}\nAlerts at ${warn}% and ${crit}% buffer.\n\n${(await summary(t)).text}`, { reply_markup: kb(t) });
+  ctx.reply(`✅ <b>Watching</b> <code>${addr}</code>\nAlerts at ${warn}% and ${crit}% buffer.\n\n${(await summary(t)).text}`, { reply_markup: kb(t), parse_mode: 'HTML' });
 }));
 bot.command('unwatch', (ctx) => {
   const a = ctx.match.trim().toLowerCase();
@@ -120,7 +122,7 @@ bot.command('status', safe(async (ctx) => {
   if (!isAddress(tk[0] ?? '')) return ctx.reply('Usage: /status 0xAddress [mainnet|testnet]');
   const t = await locate(tk[0], hint);
   if (!t.active) return ctx.reply(statusText(t));
-  ctx.reply((await summary(t)).text, { reply_markup: kb(t) });
+  ctx.reply((await summary(t)).text, { reply_markup: kb(t), parse_mode: 'HTML' });
 }));
 bot.command('simulate', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
@@ -200,8 +202,8 @@ async function tickNet(net, subs) {
       const recovered = lvl === 'SAFE' && prev !== 'SAFE';
       const repeat = lvl === 'CRITICAL' && Date.now() - (s.lastAlert ?? 0) > 30 * 60e3;
       if (worse || recovered || repeat) {
-        const head = recovered ? 'Back to safe' : lvl === 'CRITICAL' ? 'CRITICAL: liquidation risk' : 'Warning: buffer shrinking';
-        await bot.api.sendMessage(s.chatId, `${head}\n${s.address}\n\n${text}`, { reply_markup: kb(t) });
+        const head = recovered ? '🟢 Back to safe' : lvl === 'CRITICAL' ? '🔴 CRITICAL: liquidation risk' : '🟡 Warning: buffer shrinking';
+        await bot.api.sendMessage(s.chatId, `<b>${head}</b>\n<code>${s.address}</code>\n\n${text}`, { reply_markup: kb(t), parse_mode: 'HTML' });
         s.lastAlert = Date.now();
       }
       s.level = lvl; save();
