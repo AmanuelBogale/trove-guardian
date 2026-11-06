@@ -35,6 +35,12 @@ function args(ctx) {
   const hint = i >= 0 ? t.splice(i, 1)[0].toLowerCase() : undefined;
   return { t, hint };
 }
+// Explain exactly what is wrong with an address instead of a bare usage line.
+const addrHelp = (a, usage) => {
+  if (!a) return usage;
+  if (/^0x[0-9a-fA-F]*$/.test(a)) return `That address has ${a.length - 2} characters after 0x, but a full address has 40. It was probably cut off when you copied it.\n\n${usage}`;
+  return `That does not look like an address. It should start with 0x and have 40 more characters.\n\n${usage}`;
+};
 // Friendly reply instead of silence when Mezo cannot be reached.
 const safe = (fn) => async (ctx) => {
   try { await fn(ctx); } catch (e) { console.error('command failed', e.message); await ctx.reply('I could not read Mezo right now. Please try again in a minute.'); }
@@ -100,7 +106,9 @@ bot.command('watch', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
   const [addr, w = '20', c = '8'] = tk;
   const warn = Number(w), crit = Number(c);
-  if (!isAddress(addr ?? '') || !(warn > crit && crit > 0)) return ctx.reply('Usage: /watch 0xAddress [warn%] [critical%] [mainnet|testnet] (warn > critical > 0)');
+  const WU = 'Usage: /watch 0xAddress [warn%] [critical%] [mainnet|testnet] (warn > critical > 0)';
+  if (!isAddress(addr ?? '')) return ctx.reply(addrHelp(addr, WU));
+  if (!(warn > crit && crit > 0)) return ctx.reply(WU);
   const t = await locate(addr, hint);
   if (!t.active) return ctx.reply(statusText(t));
   db.subs = db.subs.filter((s) => !(s.chatId === ctx.chat.id && s.address.toLowerCase() === addr.toLowerCase()));
@@ -119,7 +127,7 @@ bot.command('list', (ctx) => {
 });
 bot.command('status', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
-  if (!isAddress(tk[0] ?? '')) return ctx.reply('Usage: /status 0xAddress [mainnet|testnet]');
+  if (!isAddress(tk[0] ?? '')) return ctx.reply(addrHelp(tk[0], 'Usage: /status 0xAddress [mainnet|testnet]'));
   const t = await locate(tk[0], hint);
   if (!t.active) return ctx.reply(statusText(t));
   ctx.reply((await summary(t)).text, { reply_markup: kb(t), parse_mode: 'HTML' });
@@ -127,19 +135,21 @@ bot.command('status', safe(async (ctx) => {
 bot.command('simulate', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
   const drop = Number(tk[1]);
-  if (!isAddress(tk[0] ?? '') || !(drop >= 0 && drop < 100)) return ctx.reply('Usage: /simulate 0xAddress 30 [mainnet|testnet]');
+  const SU = 'Usage: /simulate 0xAddress 30 [mainnet|testnet]';
+  if (!isAddress(tk[0] ?? '')) return ctx.reply(addrHelp(tk[0], SU));
+  if (!(drop >= 0 && drop < 100)) return ctx.reply(SU);
   const t = await locate(tk[0], hint);
   ctx.reply(t.active ? await simText(t, drop) : statusText(t));
 }));
 bot.command('fix', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
-  if (!isAddress(tk[0] ?? '')) return ctx.reply('Usage: /fix 0xAddress [mainnet|testnet]');
+  if (!isAddress(tk[0] ?? '')) return ctx.reply(addrHelp(tk[0], 'Usage: /fix 0xAddress [mainnet|testnet]'));
   const t = await locate(tk[0], hint);
   ctx.reply(t.active ? await fixText(t) : statusText(t));
 }));
 bot.command('rank', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
-  if (!isAddress(tk[0] ?? '')) return ctx.reply('Usage: /rank 0xAddress [mainnet|testnet]');
+  if (!isAddress(tk[0] ?? '')) return ctx.reply(addrHelp(tk[0], 'Usage: /rank 0xAddress [mainnet|testnet]'));
   const t = await locate(tk[0], hint);
   ctx.reply(t.active ? await rankText(t) : statusText(t));
 }));
