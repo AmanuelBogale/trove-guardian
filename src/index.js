@@ -96,11 +96,42 @@ const kb = (t) => new InlineKeyboard()
   .text('How to fix', `f:0:${nc(t.net)}:${t.address}`).text('Redemption rank', `r:0:${nc(t.net)}:${t.address}`).row()
   .url('Open dashboard', `${cfg.publicUrl}/?address=${t.address}&network=${t.net}`);
 
+const SAMPLE = '0x0e202c65EA6dD376788A15a27fCbA0762ca0265a';
 bot.command('start', (ctx) => ctx.reply(
-  'Trove Guardian watches your Mezo MUSD loan and warns you before liquidation. It works on Mezo mainnet (read-only) and testnet.\n\n' +
-  '/watch <address> [warn%] [critical%] [mainnet|testnet]  (default 20 / 8)\n/unwatch <address>\n/list\n' +
-  '/status <address>\n/simulate <address> <drop%>\n/fix <address>\n/rank <address>  (place in the redemption queue)\n/riskiest [mainnet|testnet]',
-  { reply_markup: new InlineKeyboard().text('Lowest-ratio Troves on mainnet', 'k:0:m').row().url('Open the dashboard', cfg.publicUrl) }));
+  '🛡️ <b>Trove Guardian</b>\n<i>Never get liquidated by surprise.</i>\n\n' +
+  'I watch your Mezo MUSD loan and warn you here before it gets close to liquidation.\n\n' +
+  '<b>1.</b> Tap <b>Try the sample loan</b> to see how it looks.\n' +
+  '<b>2.</b> Send <code>/watch 0xYourAddress</code> to get alerts.\n' +
+  '<b>3.</b> Use the buttons under any loan to test a price drop or see how to fix it.\n\n' +
+  'Works on Mezo mainnet (read-only) and testnet. Send /help for every command.',
+  { parse_mode: 'HTML', reply_markup: new InlineKeyboard()
+    .text('Try the sample loan', `q:0:t:${SAMPLE}`).row()
+    .text('Lowest-ratio Troves on mainnet', 'k:0:m').row()
+    .url('Open the dashboard', cfg.publicUrl) }));
+
+bot.command('help', (ctx) => ctx.reply(
+  '🛡️ <b>Trove Guardian commands</b>\n\n' +
+  '<b>Watch</b>\n/watch <code>address</code> [warn%] [critical%] [mainnet|testnet]\n/unwatch <code>address</code>\n/list\n\n' +
+  '<b>Check</b>\n/status <code>address</code>\n/simulate <code>address</code> <code>drop%</code>\n/fix <code>address</code>\n\n' +
+  '<b>Mezo-wide</b>\n/rank <code>address</code> (place in the redemption queue)\n/riskiest [mainnet|testnet]\n\n' +
+  '<b>Your data</b>\n/privacy  /deleteme',
+  { parse_mode: 'HTML' }));
+
+bot.command('privacy', (ctx) => ctx.reply(
+  '🔒 <b>Privacy</b>\n\n' +
+  'I store your Telegram chat ID, the addresses you /watch and your alert levels, only so I can message you.\n' +
+  'Loan data comes from the public blockchain.\n' +
+  'I never ask for a private key or seed phrase, and I cannot move your funds. Mainnet is read-only.\n\n' +
+  'Send /deleteme to erase everything I store about you.',
+  { parse_mode: 'HTML' }));
+
+bot.command('deleteme', (ctx) => {
+  const before = db.subs.length;
+  db.subs = db.subs.filter((s) => s.chatId !== ctx.chat.id);
+  const removed = before - db.subs.length;
+  save();
+  ctx.reply(removed ? `Done. I deleted ${removed} watch${removed === 1 ? '' : 'es'} and nothing else about you is stored.` : 'You have nothing stored with me.');
+});
 
 bot.command('watch', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
@@ -158,8 +189,8 @@ bot.command('riskiest', safe(async (ctx) => {
   ctx.reply(await riskText(hint ?? 'mainnet'), { parse_mode: 'HTML' });
 }));
 
-// Button taps: action:argument:network[:address]  (s = simulate, f = fix, r = rank, k = riskiest)
-bot.callbackQuery(/^([sfrk]):(\d+):([mt])(?::(0x[0-9a-fA-F]{40}))?$/, async (ctx) => {
+// Button taps: action:argument:network[:address]  (s = simulate, f = fix, r = rank, k = riskiest, q = status)
+bot.callbackQuery(/^([sfrkq]):(\d+):([mt])(?::(0x[0-9a-fA-F]{40}))?$/, async (ctx) => {
   await ctx.answerCallbackQuery().catch(() => {});
   try {
     const [, act, arg, c, addr] = ctx.match;
@@ -167,6 +198,7 @@ bot.callbackQuery(/^([sfrk]):(\d+):([mt])(?::(0x[0-9a-fA-F]{40}))?$/, async (ctx
     if (act === 'k') return await ctx.reply(await riskText(net), { parse_mode: 'HTML' });
     const t = await readTrove(addr, undefined, net);
     if (!t.active) return await ctx.reply(statusText(t));
+    if (act === 'q') return await ctx.reply((await summary(t)).text, { reply_markup: kb(t), parse_mode: 'HTML' });
     await ctx.reply(act === 's' ? await simText(t, Number(arg)) : act === 'f' ? await fixText(t) : await rankText(t));
   } catch (e) {
     console.error('button failed', e.message);
