@@ -47,11 +47,13 @@ const safe = (fn) => async (ctx) => {
 };
 
 const bar = (pct) => { const k = Math.max(0, Math.min(10, Math.round(pct / 10))); return '▰'.repeat(k) + '▱'.repeat(10 - k); };
-async function summary(t) {
+// th = the user's own alert levels (warn, crit); defaults apply when none are set.
+async function summary(t, th = {}) {
   const lim = await getLimits(t.net);
   const liq = R.liqPriceFromIcr(t.price, t.onchainIcr, lim.mcr);
   const buf = R.bufferFromIcr(t.onchainIcr, lim.mcr);
-  const dot = buf <= 8 ? '🔴' : buf <= 20 ? '🟡' : '🟢';
+  const warn = th.warn ?? 20, crit = th.crit ?? 8;
+  const dot = buf <= crit ? '🔴' : buf <= warn ? '🟡' : '🟢';
   return { lim, liq, buf, text:
     `🛡️ <b>Trove Guardian</b> · ${NETWORKS[t.net].label}\n\n` +
     `${dot} <b>${buf.toFixed(1)}%</b> room to fall before liquidation\n<code>${bar(buf)}</code>\n\n` +
@@ -145,7 +147,7 @@ bot.command('watch', safe(async (ctx) => {
   db.subs = db.subs.filter((s) => !(s.chatId === ctx.chat.id && s.address.toLowerCase() === addr.toLowerCase()));
   db.subs.push({ chatId: ctx.chat.id, address: addr, warn, crit, net: t.net });
   save();
-  ctx.reply(`✅ <b>Watching</b> <code>${addr}</code>\nAlerts at ${warn}% and ${crit}% buffer.\n\n${(await summary(t)).text}`, { reply_markup: kb(t), parse_mode: 'HTML' });
+  ctx.reply(`✅ <b>Watching</b> <code>${addr}</code>\nAlerts at ${warn}% and ${crit}% buffer.\n\n${(await summary(t, { warn, crit })).text}`, { reply_markup: kb(t), parse_mode: 'HTML' });
 }));
 bot.command('unwatch', (ctx) => {
   const a = ctx.match.trim().toLowerCase();
@@ -161,7 +163,8 @@ bot.command('status', safe(async (ctx) => {
   if (!isAddress(tk[0] ?? '')) return ctx.reply(addrHelp(tk[0], 'Usage: /status 0xAddress [mainnet|testnet]'));
   const t = await locate(tk[0], hint);
   if (!t.active) return ctx.reply(statusText(t));
-  ctx.reply((await summary(t)).text, { reply_markup: kb(t), parse_mode: 'HTML' });
+  const mine = db.subs.find((x) => x.chatId === ctx.chat.id && x.address.toLowerCase() === t.address.toLowerCase());
+  ctx.reply((await summary(t, mine)).text, { reply_markup: kb(t), parse_mode: 'HTML' });
 }));
 bot.command('simulate', safe(async (ctx) => {
   const { t: tk, hint } = args(ctx);
@@ -237,7 +240,7 @@ async function tickNet(net, subs) {
         continue;
       }
       if (s.ended) { s.ended = false; s.level = undefined; }
-      const { buf, text } = await summary(t);
+      const { buf, text } = await summary(t, s);
       const lvl = R.nextLevel(s.level, buf, s.warn, s.crit);
       const prev = s.level ?? 'SAFE';
       const worse = R.LEVELS.indexOf(lvl) > R.LEVELS.indexOf(prev);
@@ -245,7 +248,7 @@ async function tickNet(net, subs) {
       const repeat = lvl === 'CRITICAL' && Date.now() - (s.lastAlert ?? 0) > 30 * 60e3;
       if (worse || recovered || repeat) {
         const head = recovered ? '🟢 Back to safe' : lvl === 'CRITICAL' ? '🔴 CRITICAL: liquidation risk' : '🟡 Warning: buffer shrinking';
-        await bot.api.sendMessage(s.chatId, `<b>${head}</b>\n<code>${s.address}</code>\n\n${text}`, { reply_markup: kb(t), parse_mode: 'HTML' });
+        await bot.api.sendMessage(s.chatId, `<b>${head}</b>\n<code>${s.address}</code>\n\n${text}\n\n<i>Your alert levels: warning at ${s.warn}%, critical at ${s.crit}%</i>`, { reply_markup: kb(t), parse_mode: 'HTML' });
         s.lastAlert = Date.now();
       }
       s.level = lvl; save();
