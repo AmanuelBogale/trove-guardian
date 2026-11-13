@@ -6,7 +6,7 @@ A Telegram bot and web dashboard that warns Mezo MUSD borrowers before their Bit
 
 - Live: https://trove-guardian.onrender.com
 - Bot: https://t.me/TroveGuardianAman_bot
-- Video: https://youtu.be/jb3sczsmqQk
+- Video: https://youtu.be/txXCua2pRXo
 - Evidence of testing: [docs/EVIDENCE.md](docs/EVIDENCE.md)
 
 Status: working on Mezo testnet (rescue) and Mezo mainnet (read-only).
