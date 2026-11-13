@@ -5,7 +5,7 @@ Rescue transactions were done on Mezo testnet with test coins. Mainnet is read-o
 ## Live links
 - App and dashboard: https://trove-guardian.onrender.com
 - Telegram bot: https://t.me/TroveGuardianAman_bot
-- Demo video: https://youtu.be/jb3sczsmqQk
+- Demo video: https://youtu.be/txXCua2pRXo
 - Pitch deck: [Trove Guardian pitch deck.pdf](../Trove%20Guardian%20pitch%20deck.pdf)
 
 ## 1. One-tap rescue, on a real testnet loan
@@ -26,6 +26,7 @@ From the dashboard, the owner connected a wallet (Rabby), the page simulated the
 - `/riskiest` read Mezo's sorted list of Troves on mainnet: **3 open Troves**. The lowest ratio was **115%** (debt about 2,090 MUSD), then 134%, then about 8,891%.
 - `/status` on a mainnet Trove returned 16.5892 BTC of collateral, 14,492.93 MUSD of debt, a ratio of 8,893.4% and a 98.8% buffer. `/rank` placed it **3 of 3** from the lowest ratio.
 - The dashboard loads the same Trove with the network switch set to mainnet, and shows the redemption queue position.
+- Update, Nov 12, 2026: the same list now shows **5 open Troves** (up from 3 on Nov 4). The lowest ratio is still **115%** and the highest is about 8,500%. The market is small but growing.
 - A mainnet sample to try: `0x593c427d8C7bf5C555Ed41cd7CB7cCe8C9F15bB5`. Figures change over time.
 - Why it matters: only a handful of Troves are open on mainnet right now, so the market for loan monitoring is small today. Trove Guardian is built for when borrowing grows, and its redemption-risk view applies to every Trove.
 
